@@ -136,11 +136,15 @@ func (r *RTPReceiver) Stop() error {
 
 	select {
 	case <-r.received:
-		if err := r.rtcpReadStream.Close(); err != nil {
-			return err
+		if r.rtcpReadStream != nil {
+			if err := r.rtcpReadStream.Close(); err != nil {
+				return err
+			}
 		}
-		if err := r.rtpReadStream.Close(); err != nil {
-			return err
+		if r.rtpReadStream != nil {
+			if err := r.rtpReadStream.Close(); err != nil {
+				return err
+			}
 		}
 	default:
 	}
