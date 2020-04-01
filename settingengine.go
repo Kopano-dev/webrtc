@@ -50,6 +50,8 @@ type SettingEngine struct {
 	}
 	answeringDTLSRole                         DTLSRole
 	disableCertificateFingerprintVerification bool
+	disableSRTPReplayProtection               bool
+	disableSRTCPReplayProtection              bool
 	vnet                                      *vnet.Net
 	LoggerFactory                             logging.LoggerFactory
 }
@@ -224,4 +226,14 @@ func (e *SettingEngine) SetSRTPReplayProtectionWindow(n uint) {
 // SetSRTCPReplayProtectionWindow sets a replay attack protection window size of SRTCP session.
 func (e *SettingEngine) SetSRTCPReplayProtectionWindow(n uint) {
 	e.replayProtection.SRTCP = &n
+}
+
+// DisableSRTPReplayProtection disables SRTP replay protection.
+func (e *SettingEngine) DisableSRTPReplayProtection(isDisabled bool) {
+	e.disableSRTPReplayProtection = isDisabled
+}
+
+// DisableSRTCPReplayProtection disables SRTCP replay protection.
+func (e *SettingEngine) DisableSRTCPReplayProtection(isDisabled bool) {
+	e.disableSRTCPReplayProtection = isDisabled
 }
