@@ -1,17 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"math/rand"
-	"os"
-	"time"
+	"net"
 
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v2"
 	"github.com/pion/webrtc/v2/examples/internal/signal"
-	"github.com/pion/webrtc/v2/pkg/media"
-	"github.com/pion/webrtc/v2/pkg/media/ivfreader"
 )
 
 func main() {
@@ -53,8 +48,34 @@ func main() {
 		panic(err)
 	}
 
-	// Create a video track
-	videoTrack, err := peerConnection.NewTrack(payloadType, rand.Uint32(), "video", "pion")
+	// Open a UDP Listener for RTP Packets on port 5004
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 5004})
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err = listener.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	fmt.Println("Waiting for RTP Packets, please run GStreamer or ffmpeg now")
+
+	// Listen for a single RTP Packet, we need this to determine the SSRC
+	inboundRTPPacket := make([]byte, 4096) // UDP MTU
+	n, _, err := listener.ReadFromUDP(inboundRTPPacket)
+	if err != nil {
+		panic(err)
+	}
+
+	// Unmarshal the incoming packet
+	packet := &rtp.Packet{}
+	if err = packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
+		panic(err)
+	}
+
+	// Create a video track, using the same SSRC as the incoming RTP Packet
+	videoTrack, err := peerConnection.NewTrack(payloadType, packet.SSRC, "video", "pion")
 	if err != nil {
 		panic(err)
 	}
@@ -62,50 +83,10 @@ func main() {
 		panic(err)
 	}
 
-	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
-	go func() {
-		// Open a IVF file and start reading using our IVFReader
-		file, ivfErr := os.Open("output.ivf")
-		if ivfErr != nil {
-			panic(ivfErr)
-		}
-
-		ivf, header, ivfErr := ivfreader.NewWith(file)
-		if ivfErr != nil {
-			panic(ivfErr)
-		}
-
-		// Wait for connection established
-		<-iceConnectedCtx.Done()
-
-		// Send our video file frame at a time. Pace our sending so we send it at the same speed it should be played back as.
-		// This isn't required since the video is timestamped, but we will such much higher loss if we send all at once.
-		sleepTime := time.Millisecond * time.Duration((float32(header.TimebaseNumerator)/float32(header.TimebaseDenominator))*1000)
-		for {
-			frame, _, ivfErr := ivf.ParseNextFrame()
-			if ivfErr == io.EOF {
-				fmt.Printf("All frames parsed and sent")
-				os.Exit(0)
-			}
-
-			if ivfErr != nil {
-				panic(ivfErr)
-			}
-
-			time.Sleep(sleepTime)
-			if ivfErr = videoTrack.WriteSample(media.Sample{Data: frame, Samples: 90000}); ivfErr != nil {
-				panic(ivfErr)
-			}
-		}
-	}()
-
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
-		if connectionState == webrtc.ICEConnectionStateConnected {
-			iceConnectedCtxCancel()
-		}
 	})
 
 	// Set the remote SessionDescription
@@ -127,6 +108,22 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(answer))
 
-	// Block forever
-	select {}
+	// Read RTP packets forever and send them to the WebRTC Client
+	for {
+		n, _, err := listener.ReadFrom(inboundRTPPacket)
+		if err != nil {
+			fmt.Printf("error during read: %s", err)
+			panic(err)
+		}
+
+		packet := &rtp.Packet{}
+		if err := packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
+			panic(err)
+		}
+		packet.Header.PayloadType = payloadType
+
+		if writeErr := videoTrack.WriteRTP(packet); writeErr != nil {
+			panic(writeErr)
+		}
+	}
 }

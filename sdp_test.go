@@ -96,6 +96,8 @@ func TestTrackDetailsFromSDP(t *testing.T) {
 						Media: "foobar",
 					},
 					Attributes: []sdp.Attribute{
+						{Key: "mid", Value: "0"},
+						{Key: "sendrecv"},
 						{Key: "ssrc", Value: "1000 msid:unknown_trk_label unknown_trk_guid"},
 					},
 				},
@@ -104,6 +106,8 @@ func TestTrackDetailsFromSDP(t *testing.T) {
 						Media: "audio",
 					},
 					Attributes: []sdp.Attribute{
+						{Key: "mid", Value: "1"},
+						{Key: "sendrecv"},
 						{Key: "ssrc", Value: "2000 msid:audio_trk_label audio_trk_guid"},
 					},
 				},
@@ -112,16 +116,29 @@ func TestTrackDetailsFromSDP(t *testing.T) {
 						Media: "video",
 					},
 					Attributes: []sdp.Attribute{
+						{Key: "mid", Value: "2"},
+						{Key: "sendrecv"},
 						{Key: "ssrc-group", Value: "FID 3000 4000"},
 						{Key: "ssrc", Value: "3000 msid:video_trk_label video_trk_guid"},
 						{Key: "ssrc", Value: "4000 msid:rtx_trk_label rtx_trck_guid"},
+					},
+				},
+				{
+					MediaName: sdp.MediaName{
+						Media: "video",
+					},
+					Attributes: []sdp.Attribute{
+						{Key: "mid", Value: "3"},
+						{Key: "sendonly"},
+						{Key: "msid", Value: "video_stream_id video_trk_id"},
+						{Key: "ssrc", Value: "5000"},
 					},
 				},
 			},
 		}
 
 		tracks := trackDetailsFromSDP(nil, s)
-		assert.Equal(t, 2, len(tracks))
+		assert.Equal(t, 3, len(tracks))
 		if _, ok := tracks[1000]; ok {
 			assert.Fail(t, "got the unknown track ssrc:1000 which should have been skipped")
 		}
@@ -142,5 +159,40 @@ func TestTrackDetailsFromSDP(t *testing.T) {
 		if _, ok := tracks[4000]; ok {
 			assert.Fail(t, "got the rtx track ssrc:3000 which should have been skipped")
 		}
+		if track, ok := tracks[5000]; !ok {
+			assert.Fail(t, "missing video track with ssrc:5000")
+		} else {
+			assert.Equal(t, RTPCodecTypeVideo, track.kind)
+			assert.Equal(t, uint32(5000), track.ssrc)
+			assert.Equal(t, "video_trk_id", track.id)
+			assert.Equal(t, "video_stream_id", track.label)
+		}
+	})
+
+	t.Run("inactive and recvonly tracks ignored", func(t *testing.T) {
+		s := &sdp.SessionDescription{
+			MediaDescriptions: []*sdp.MediaDescription{
+				{
+					MediaName: sdp.MediaName{
+						Media: "video",
+					},
+					Attributes: []sdp.Attribute{
+						{Key: "inactive"},
+						{Key: "ssrc", Value: "6000"},
+					},
+				},
+				{
+					MediaName: sdp.MediaName{
+						Media: "video",
+					},
+					Attributes: []sdp.Attribute{
+						{Key: "recvonly"},
+						{Key: "ssrc", Value: "7000"},
+					},
+				},
+			},
+		}
+
+		assert.Equal(t, 0, len(trackDetailsFromSDP(nil, s)))
 	})
 }
