@@ -818,16 +818,7 @@ func (pc *PeerConnection) SetRemoteDescription(desc SessionDescription) error {
 				if err != nil {
 					return err
 				}
-
-				switch direction {
-				case RTPTransceiverDirectionSendonly, RTPTransceiverDirectionSendrecv:
-					t = pc.newRTPTransceiver(receiver, nil, RTPTransceiverDirectionRecvonly, kind)
-				case RTPTransceiverDirectionRecvonly, RTPTransceiverDirectionInactive:
-					fallthrough
-				default:
-					t = pc.newRTPTransceiver(receiver, nil, RTPTransceiverDirectionInactive, kind)
-				}
-
+				t = pc.newRTPTransceiver(receiver, nil, RTPTransceiverDirectionRecvonly, kind)
 			}
 			if t.Mid() == "" {
 				_ = t.setMid(midValue)
